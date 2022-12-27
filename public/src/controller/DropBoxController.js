@@ -509,7 +509,6 @@ class DropBoxController {
   initEventsLi(li) {
     li.addEventListener("dblclick", (e) => {
       let file = JSON.parse(li.dataset.file);
-      console.log(file);
       switch (file.mimetype) {
         case "folder":
           this.currentFolder.push(file.originalFilename);
@@ -517,7 +516,7 @@ class DropBoxController {
           break;
 
         default:
-          window.open("/file?path=" + file.filepath);
+          window.open(`/file?path=${file.filepath}`, '_blank', 'location=yes,height=570,width=520,scrollbars=yes,status=yes')
       }
     });
 
