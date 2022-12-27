@@ -12,12 +12,13 @@ class DropBoxController {
     this.btnRename = document.querySelector("#btn-rename");
     this.btnDelete = document.querySelector("#btn-delete");
     this.currentFolder = ["root"];
+    this.navBrowseLocationEl = document.querySelector("#browse-location")
 
     this.connectFirebase();
 
     this.initEvents();
 
-    this.readFilesDatabase();
+    this.openFolder();
   }
 
   connectFirebase() {
@@ -431,11 +432,16 @@ class DropBoxController {
     return li;
   }
 
-  getFirebaseRef() {
-    return firebase.database().ref("files");
+  getFirebaseRef(filepath) {
+    if (!filepath) {
+      filepath = this.currentFolder.join("/");
+    }
+    return firebase.database().ref(filepath);
   }
 
   readFilesDatabase() {
+    this.lastFolder = this.currentFolder.join("/");
+
     this.getFirebaseRef().on("value", (snapshot) => {
       this.listFilesEl.innerHTML = "";
 
@@ -443,12 +449,78 @@ class DropBoxController {
         let key = snapshotItem.key;
         let data = snapshotItem.val();
 
-        this.listFilesEl.appendChild(this.getFileView(data, key));
+        if (data.mimetype) {
+          this.listFilesEl.appendChild(this.getFileView(data, key));
+        }
       });
     });
   }
 
+  renderBrowseLocation() {
+
+    let nav = document.createElement("nav");
+
+    let path = [];
+
+    for(let i=0; i < this.currentFolder.length; i++) {
+      let folderName = this.currentFolder[i];
+      let span = document.createElement("span")
+
+      path.push(folderName)
+
+      if(i+1 === this.currentFolder.length) { // Para saber se é o ultimo elemento do array
+        span.innerHTML=folderName
+      } else {
+        span.className="breadcrumb-segment__wrapper"
+        span.innerHTML = `
+        <span class="ue-effect-container uee-BreadCrumbSegment-link-0">
+          <a href="#" data-path="${path.join('/')}" class="breadcrumb-segment">${folderName}</a>
+        </span>
+        <svg width="24" height="24" viewBox="0 0 24 24" class="mc-icon-template-stateless" style="top: 4px; position: relative">
+          <title>arrow-right</title>
+          <path d="M10.414 7.05l4.95 4.95-4.95 4.95L9 15.534 12.536 12 9 8.464z" fill="#637282" fill-rule="evenodd"></path>
+        </svg>
+        `
+      }
+      nav.appendChild(span)
+    }
+
+    this.navBrowseLocationEl.innerHTML = nav.innerHTML
+    this.navBrowseLocationEl.querySelectorAll("a").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+
+        this.currentFolder = item.dataset.path.split('/');
+
+        this.openFolder()
+
+      })
+    })
+  }
+
+  openFolder() {
+    if (this.lastFolder) {
+      this.getFirebaseRef(this.lastFolder).off();
+    }
+    this.renderBrowseLocation()
+    this.readFilesDatabase();
+  }
+
   initEventsLi(li) {
+    li.addEventListener("dblclick", (e) => {
+      let file = JSON.parse(li.dataset.file);
+      console.log(file);
+      switch (file.mimetype) {
+        case "folder":
+          this.currentFolder.push(file.originalFilename);
+          this.openFolder();
+          break;
+
+        default:
+          window.open("/file?path=" + file.filepath);
+      }
+    });
+
     li.addEventListener("click", (e) => {
       if (e.shiftKey) {
         let firstLi = this.listFilesEl.querySelector(".selected");
