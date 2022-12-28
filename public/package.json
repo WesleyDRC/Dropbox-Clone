@@ -2,7 +2,6 @@
   "name": "curso-javascript-projeto-dropbox-clone",
   "version": "1.0.0",
   "description": "Projeto desenvolvido no Curso Completo de JavaScript da Hcode",
-  "main": "index.html",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
