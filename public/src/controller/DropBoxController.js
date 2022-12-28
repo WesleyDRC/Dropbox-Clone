@@ -12,7 +12,7 @@ class DropBoxController {
     this.btnRename = document.querySelector("#btn-rename");
     this.btnDelete = document.querySelector("#btn-delete");
     this.currentFolder = ["root"];
-    this.navBrowseLocationEl = document.querySelector("#browse-location")
+    this.navBrowseLocationEl = document.querySelector("#browse-location");
 
     this.connectFirebase();
 
@@ -79,6 +79,55 @@ class DropBoxController {
     });
   }
 
+  removeFolder(ref, name) {
+    return new Promise((resolve, reject) => {
+      let folderRef = this.getFirebaseRef(ref + "/" + name);
+
+      folderRef.on("value", (snapshot) => {
+        folderRef.off("value");
+        snapshot.forEach((item) => {
+          let data = item.val();
+          data.key = item.key;
+
+          if (data.type === "folder") {
+            this.removeFolder(ref + "/" + name, data.name)
+              .then(() => {
+                resolve({
+                  fields: {
+                    key: data.key,
+                  },
+                });
+              })
+              .catch((error) => {
+                reject(error);
+              });
+          } else if (data.type) {
+            this.removeFile(ref + "/" + name, data.name)
+              .then(() => {
+                resolve({
+                  fields: {
+                    key: data.key,
+                  },
+                });
+              })
+              .catch((error) => {
+                reject(error);
+              });
+          }
+        });
+
+        folderRef.remove();
+      });
+    });
+  }
+
+  removeFile(ref, name) {
+    // referência do arquivo que desejo excluir
+    let fileRef = firebase.storage().ref(ref).child(name);
+
+    return fileRef.delete();
+  }
+
   removeTask() {
     let promises = [];
 
@@ -86,12 +135,35 @@ class DropBoxController {
       let file = JSON.parse(li.dataset.file);
       let key = li.dataset.key;
 
-      let formData = new FormData();
-
-      formData.append("path", file.filepath);
-      formData.append("key", key);
-
-      promises.push(this.ajax("/file", "DELETE", formData));
+      promises.push(
+        new Promise((resolve, reject) => {
+          if (file.type === "folder") {
+            this.removeFolder(this.currentFolder.join("/"), file.name)
+              .then(() => {
+                resolve({
+                  fields: {
+                    key,
+                  },
+                });
+              })
+              .catch((error) => {
+                reject(error);
+              });
+          } else if (file.type) {
+            this.removeFile(this.currentFolder.join("/"), file.name)
+              .then(() => {
+                resolve({
+                  fields: {
+                    key,
+                  },
+                });
+              })
+              .catch((error) => {
+                console.log(error);
+              });
+          }
+        })
+      );
     });
 
     return Promise.all(promises);
@@ -107,12 +179,12 @@ class DropBoxController {
       this.uploadTask(e.target.files)
         .then((responses) => {
           responses.forEach((resp) => {
-            console.log(resp)
+            console.log(resp);
             this.getFirebaseRef().push().set({
               name: resp.name,
               type: resp.contentType,
               path: resp.downloadURLs[0],
-              size: resp.size
+              size: resp.size,
             });
           });
 
@@ -147,7 +219,7 @@ class DropBoxController {
 
       let file = JSON.parse(li.dataset.file);
 
-      console.log(file)
+      console.log(file);
 
       let rename = prompt("Renomear arquivo", file.name);
 
@@ -166,8 +238,6 @@ class DropBoxController {
               this.getFirebaseRef().child(response.fields.key).remove();
             }
           });
-
-          console.log("responses");
         })
         .catch((error) => {
           console.log(error);
@@ -236,31 +306,42 @@ class DropBoxController {
 
     [...files].forEach((file) => {
 
-      console.log(file)
+      promises.push(
+        new Promise((resolve, reject) => {
+          let fileRef = firebase
+            .storage()
+            .ref(this.currentFolder.join("/"))
+            .child(file.name);
+          let task = fileRef.put(file);
 
-       promises.push(new Promise((resolve, reject) => {
-        let fileRef = firebase.storage().ref(this.currentFolder.join('/')).child(file.name)
-        let task = fileRef.put(file);
-
-        task.on('state_changed', (snapshot) => {
-          this.uploadProgress({
-            loaded: snapshot.bytesTransferred,
-            total: snapshot.totalBytes
-          },file)
-
-         }, (error) => {
-          console.error('error', error)
-          reject(error)
-         }, (snapshot) => {
-
-          fileRef.getMetadata().then((metadata) => {
-            resolve(metadata)
-          }).catch((error) => {
-            reject(error)
-          })
-
-         })
-       }))
+          task.on(
+            "state_changed",
+            (snapshot) => {
+              this.uploadProgress(
+                {
+                  loaded: snapshot.bytesTransferred,
+                  total: snapshot.totalBytes,
+                },
+                file
+              );
+            },
+            (error) => {
+              console.error("error", error);
+              reject(error);
+            },
+            (snapshot) => {
+              fileRef
+                .getMetadata()
+                .then((metadata) => {
+                  resolve(metadata);
+                })
+                .catch((error) => {
+                  reject(error);
+                });
+            }
+          );
+        })
+      );
     });
 
     return Promise.all(promises);
@@ -463,7 +544,6 @@ class DropBoxController {
       snapshot.forEach((snapshotItem) => {
         let key = snapshotItem.key;
         let data = snapshotItem.val();
-        console.log(data)
         if (data.type) {
           this.listFilesEl.appendChild(this.getFileView(data, key));
         }
@@ -472,52 +552,53 @@ class DropBoxController {
   }
 
   renderBrowseLocation() {
-
     let nav = document.createElement("nav");
 
     let path = [];
 
-    for(let i=0; i < this.currentFolder.length; i++) {
+    for (let i = 0; i < this.currentFolder.length; i++) {
       let folderName = this.currentFolder[i];
-      let span = document.createElement("span")
+      let span = document.createElement("span");
 
-      path.push(folderName)
+      path.push(folderName);
 
-      if(i+1 === this.currentFolder.length) { // Para saber se é o ultimo elemento do array
-        span.innerHTML=folderName
+      if (i + 1 === this.currentFolder.length) {
+        // Para saber se é o ultimo elemento do array
+        span.innerHTML = folderName;
       } else {
-        span.className="breadcrumb-segment__wrapper"
+        span.className = "breadcrumb-segment__wrapper";
         span.innerHTML = `
         <span class="ue-effect-container uee-BreadCrumbSegment-link-0">
-          <a href="#" data-path="${path.join('/')}" class="breadcrumb-segment">${folderName}</a>
+          <a href="#" data-path="${path.join(
+            "/"
+          )}" class="breadcrumb-segment">${folderName}</a>
         </span>
         <svg width="24" height="24" viewBox="0 0 24 24" class="mc-icon-template-stateless" style="top: 4px; position: relative">
           <title>arrow-right</title>
           <path d="M10.414 7.05l4.95 4.95-4.95 4.95L9 15.534 12.536 12 9 8.464z" fill="#637282" fill-rule="evenodd"></path>
         </svg>
-        `
+        `;
       }
-      nav.appendChild(span)
+      nav.appendChild(span);
     }
 
-    this.navBrowseLocationEl.innerHTML = nav.innerHTML
+    this.navBrowseLocationEl.innerHTML = nav.innerHTML;
     this.navBrowseLocationEl.querySelectorAll("a").forEach((item) => {
       item.addEventListener("click", (e) => {
         e.preventDefault();
 
-        this.currentFolder = item.dataset.path.split('/');
+        this.currentFolder = item.dataset.path.split("/");
 
-        this.openFolder()
-
-      })
-    })
+        this.openFolder();
+      });
+    });
   }
 
   openFolder() {
     if (this.lastFolder) {
       this.getFirebaseRef(this.lastFolder).off();
     }
-    this.renderBrowseLocation()
+    this.renderBrowseLocation();
     this.readFilesDatabase();
   }
 
@@ -532,7 +613,11 @@ class DropBoxController {
           break;
 
         default:
-          window.open(`/file?path=${file.filepath}`, '_blank', 'location=yes,height=570,width=520,scrollbars=yes,status=yes')
+          window.open(
+            file.path,
+            "_blank",
+            "location=yes,height=570,width=520,scrollbars=yes,status=yes"
+          );
       }
     });
 
