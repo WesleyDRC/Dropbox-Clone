@@ -16,6 +16,7 @@ Projeto construído no curso de JavaScript da hcode.
 * Salvar, excluir e renomear arquivos no Firebase
 * Navegar entre pastas
 * Abrir arquivo em uma nova aba do navegador
+* Usuário pode selecionar mais de uma pasta pressionando Ctrl ou Shift
 
 > TECNOLOGIAS
 
@@ -24,5 +25,3 @@ Projeto construído no curso de JavaScript da hcode.
 * JavaScript
 * NodeJS
 * Bower
-
-
