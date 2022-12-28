@@ -107,7 +107,13 @@ class DropBoxController {
       this.uploadTask(e.target.files)
         .then((responses) => {
           responses.forEach((resp) => {
-            this.getFirebaseRef().push().set(resp.files["input-file"]);
+            console.log(resp)
+            this.getFirebaseRef().push().set({
+              name: resp.name,
+              type: resp.contentType,
+              path: resp.downloadURLs[0],
+              size: resp.size
+            });
           });
 
           this.uploadComplete();
@@ -141,10 +147,12 @@ class DropBoxController {
 
       let file = JSON.parse(li.dataset.file);
 
-      let rename = prompt("Renomear arquivo", file.originalFilename);
+      console.log(file)
+
+      let rename = prompt("Renomear arquivo", file.name);
 
       if (rename) {
-        file.originalFilename = rename;
+        file.name = rename;
 
         this.getFirebaseRef().child(li.dataset.key).set(file); // Procura um filho que tenha a mesma key
       }
@@ -172,8 +180,8 @@ class DropBoxController {
         this.getFirebaseRef()
           .push()
           .set({
-            originalFilename: name,
-            mimetype: "folder",
+            name: name,
+            type: "folder",
             filepath: this.currentFolder.join("/"),
           });
       }
@@ -227,31 +235,39 @@ class DropBoxController {
     let promises = [];
 
     [...files].forEach((file) => {
-      // Uma promessa para cada arquivo enviado
 
-      let formData = new FormData();
-      formData.append("input-file", file);
+      console.log(file)
 
-      promises.push(
-        this.ajax(
-          "/upload",
-          "POST",
-          formData,
-          (event) => {
-            this.uploadProgress(event, file);
-          },
-          () => {
-            this.startUploadTime = Date.now();
-          }
-        )
-      );
+       promises.push(new Promise((resolve, reject) => {
+        let fileRef = firebase.storage().ref(this.currentFolder.join('/')).child(file.name)
+        let task = fileRef.put(file);
+
+        task.on('state_changed', (snapshot) => {
+          this.uploadProgress({
+            loaded: snapshot.bytesTransferred,
+            total: snapshot.totalBytes
+          },file)
+
+         }, (error) => {
+          console.error('error', error)
+          reject(error)
+         }, (snapshot) => {
+
+          fileRef.getMetadata().then((metadata) => {
+            resolve(metadata)
+          }).catch((error) => {
+            reject(error)
+          })
+
+         })
+       }))
     });
 
     return Promise.all(promises);
   }
 
   getFileIconView(file) {
-    switch (file.mimetype) {
+    switch (file.type) {
       case "folder":
         return `
           <svg width="160" height="160" viewBox="0 0 160 160" class="mc-icon-template-content tile__preview tile__preview--icon">
@@ -418,13 +434,12 @@ class DropBoxController {
 
   getFileView(file, key) {
     let li = document.createElement("li");
-
     li.dataset.key = key;
     li.dataset.file = JSON.stringify(file); // Dentro do dataset só conseguimos salvar strings
 
     li.innerHTML = `
       ${this.getFileIconView(file)}
-        <div class="name text-center">${file.originalFilename}</div>
+        <div class="name text-center">${file.name}</div>
     `;
 
     this.initEventsLi(li);
@@ -448,8 +463,8 @@ class DropBoxController {
       snapshot.forEach((snapshotItem) => {
         let key = snapshotItem.key;
         let data = snapshotItem.val();
-
-        if (data.mimetype) {
+        console.log(data)
+        if (data.type) {
           this.listFilesEl.appendChild(this.getFileView(data, key));
         }
       });
@@ -509,9 +524,10 @@ class DropBoxController {
   initEventsLi(li) {
     li.addEventListener("dblclick", (e) => {
       let file = JSON.parse(li.dataset.file);
-      switch (file.mimetype) {
+
+      switch (file.type) {
         case "folder":
-          this.currentFolder.push(file.originalFilename);
+          this.currentFolder.push(file.name);
           this.openFolder();
           break;
 
