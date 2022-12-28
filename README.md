@@ -2,7 +2,7 @@
 
 Projeto construído no curso de JavaScript da hcode.
 
-![preview](../.github/dropbox.png)
+![preview](./.github/dropbox.png)
 
 > 📚 APRENDIZADO
 
